@@ -29,9 +29,7 @@ async function loadEventFiles() {
     const commits = Array.isArray(event.commits) ? event.commits : []
     for (const commit of commits) {
       for (const filePath of [...(commit.added || []), ...(commit.modified || [])]) {
-        if (filePath.startsWith('workflows/')) {
-          files.add(filePath)
-        }
+        files.add(filePath)
       }
     }
 
@@ -41,10 +39,12 @@ async function loadEventFiles() {
         ...(event.head_commit.added || []),
         ...(event.head_commit.modified || []),
       ]) {
-        if (filePath.startsWith('workflows/')) {
-          files.add(filePath)
-        }
+        files.add(filePath)
       }
+    }
+
+    if (files.size > 0) {
+      console.log(`Detected changed files from event payload (${files.size}):`, Array.from(files))
     }
 
     return Array.from(files)
@@ -55,7 +55,7 @@ async function loadEventFiles() {
 }
 
 async function readWorkflowDirectory(githubPath) {
-  const directory = path.join(process.cwd(), 'workflows', githubPath)
+  const directory = path.join(process.cwd(), githubPath)
 
   const workflowYmlPath = path.join(directory, 'workflow.yml')
   const readmePath = path.join(directory, 'README.md')
@@ -66,11 +66,9 @@ async function readWorkflowDirectory(githubPath) {
       .then(() => true)
       .catch(() => false)
 
-  if (!(await exists(workflowYmlPath))) {
-    throw new Error(`workflow.yml not found at ${workflowYmlPath}`)
-  }
-  if (!(await exists(readmePath))) {
-    throw new Error(`README.md not found at ${readmePath}`)
+  if (!(await exists(workflowYmlPath)) || !(await exists(readmePath))) {
+    console.log(`Skipping ${githubPath} because workflow.yml or README.md is missing.`)
+    return null
   }
 
   const ymlContent = await fs.readFile(workflowYmlPath, 'utf8')
@@ -121,17 +119,47 @@ async function readWorkflowDirectory(githubPath) {
 async function main() {
   const changedFiles = await loadEventFiles()
 
-  if (changedFiles.length === 0) {
+  let filesToProcess = changedFiles
+
+  if (filesToProcess.length === 0) {
+    const { GITHUB_BEFORE, GITHUB_SHA } = process.env
+    if (GITHUB_BEFORE && GITHUB_BEFORE !== '0000000000000000000000000000000000000000' && GITHUB_SHA) {
+      try {
+        const diffOutput = await fs
+          .readFile('/tmp/diff-files', 'utf8')
+          .catch(async () => {
+            const { execSync } = require('node:child_process')
+            const diff = execSync(`git diff --name-only ${GITHUB_BEFORE} ${GITHUB_SHA}`, {
+              encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'inherit'],
+            })
+            await fs.writeFile('/tmp/diff-files', diff, 'utf8')
+            return diff
+          })
+        filesToProcess = diffOutput
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+        if (filesToProcess.length > 0) {
+          console.log(`Fallback diff detected changed files (${filesToProcess.length}):`, filesToProcess)
+        }
+      } catch (error) {
+        console.error('Failed to compute git diff:', error)
+      }
+    }
+  }
+
+  if (filesToProcess.length === 0) {
     console.log('No workflow changes detected. Skipping sync.')
     return
   }
 
   const directories = Array.from(
     new Set(
-      changedFiles
+      filesToProcess
         .map((file) => {
           const parts = file.split('/')
-          if (parts.length <= 2) return null
+          if (parts.length < 2) return null
           return parts.slice(0, parts.length - 1).join('/')
         })
         .filter(Boolean),
@@ -139,7 +167,7 @@ async function main() {
   )
 
   if (directories.length === 0) {
-    console.log('No workflow directories detected. Skipping sync.')
+    console.log('No workflow directories detected after filtering. Skipping sync.')
     return
   }
 
@@ -148,9 +176,12 @@ async function main() {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
   for (const directory of directories) {
-    const githubPath = directory.replace(/^workflows\//, '')
+    const githubPath = directory
     try {
       const dataToUpsert = await readWorkflowDirectory(githubPath)
+      if (!dataToUpsert) {
+        continue
+      }
       console.log(`Upserting workflow: ${githubPath}`)
 
       const { error } = await supabase.from('workflows').upsert(dataToUpsert, {
