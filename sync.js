@@ -122,30 +122,22 @@ async function main() {
   let filesToProcess = changedFiles
 
   if (filesToProcess.length === 0) {
-    const { GITHUB_BEFORE, GITHUB_SHA } = process.env
-    if (GITHUB_BEFORE && GITHUB_BEFORE !== '0000000000000000000000000000000000000000' && GITHUB_SHA) {
-      try {
-        const diffOutput = await fs
-          .readFile('/tmp/diff-files', 'utf8')
-          .catch(async () => {
-            const { execSync } = require('node:child_process')
-            const diff = execSync(`git diff --name-only ${GITHUB_BEFORE} ${GITHUB_SHA}`, {
-              encoding: 'utf8',
-              stdio: ['ignore', 'pipe', 'inherit'],
-            })
-            await fs.writeFile('/tmp/diff-files', diff, 'utf8')
-            return diff
-          })
-        filesToProcess = diffOutput
-          .split('\n')
-          .map((line) => line.trim())
-          .filter(Boolean)
-        if (filesToProcess.length > 0) {
-          console.log(`Fallback diff detected changed files (${filesToProcess.length}):`, filesToProcess)
-        }
-      } catch (error) {
-        console.error('Failed to compute git diff:', error)
+    try {
+      const { execSync } = require('node:child_process')
+      const diff = execSync('git diff --name-only HEAD^ HEAD', {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'inherit'],
+      })
+      filesToProcess = diff
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+
+      if (filesToProcess.length > 0) {
+        console.log(`Fallback diff detected changed files (${filesToProcess.length}):`, filesToProcess)
       }
+    } catch (error) {
+      console.error('Failed to compute git diff against HEAD^:', error)
     }
   }
 
