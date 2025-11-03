@@ -99,12 +99,28 @@ async function readWorkflowDirectory(githubPath) {
 
   const language = tags.find((tag) => tag.toLowerCase().startsWith('language:')) || null
 
+  const description = (() => {
+    const lines = readmeContent.split(/\r?\n/)
+    for (const rawLine of lines) {
+      const line = rawLine.trim()
+      if (!line) continue
+      if (line.startsWith('#')) continue
+      if (line.startsWith('**')) continue
+      if (line.startsWith('![')) continue
+      if (line.startsWith('- ')) continue
+      if (line.startsWith('* ')) continue
+      return line
+    }
+    return null
+  })()
+
   const data = {
     name: nameMatch ? nameMatch[1].trim() : githubPath.split('/').pop(),
     github_path: githubPath,
     author_github: authorMatch ? authorMatch[1].trim() : null,
     tags,
     language,
+    description,
     readme_content: readmeContent,
     yml_content: ymlContent,
     dsl_content: dslContent,
