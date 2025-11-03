@@ -5,7 +5,9 @@ on:
     branches:
       - main
     paths:
-      - "workflows/**"
+      - "**/*.md"
+      - "**/*.yml"
+      - "**/*.yaml"
 
 jobs:
   sync-to-supabase:
