@@ -79,7 +79,7 @@ async function readWorkflowDirectory(githubPath) {
   const nameMatch = readmeContent.match(/^#\s+(.+)$/m)
   const authorMatch = readmeContent.match(/\*\*Author:\*\*\s*`?([A-Za-z0-9-_]+)`?/i)
   const tagsLineMatch = readmeContent.match(/^\*\*Tags:\*\*\s*(.+)$/im)
-  const difyVersionMatch = readmeContent.match(/Dify\s+v(\d+\.\d+\.\d+(?:\+[^\s]*)?)/i)
+  const difyVersionMatch = readmeContent.match(/\*\*Dify\s+Version:\*\*\s*`?(v[^\s`]+)`?/i)
   let tags = []
   if (tagsLineMatch) {
     const tagsLine = tagsLineMatch[1]
